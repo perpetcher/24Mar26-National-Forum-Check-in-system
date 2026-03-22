@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Event Scanner</title>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <style>
+    :root { --primary: #2563eb; --bg: #f1f5f9; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg); color: #1e293b;
+      padding: 20px; display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+    }
+
+    /* ===== Header ===== */
+    .header { margin-bottom: 20px; text-align: center; }
+    .header h1 { font-size: 1.5rem; text-transform: uppercase; letter-spacing: 1px; color: #0f172a; }
+    .badge-staff { background: var(--primary); color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: bold; display: inline-block; margin-top: 4px; }
+
+    /* ===== Cards ===== */
+    .card { background: white; width: 100%; max-width: 420px; border-radius: 24px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.06); margin-bottom: 20px; }
+
+    /* ===== Camera ===== */
+    #video-container {
+      width: 100%; aspect-ratio: 1; background: #000; border-radius: 16px;
+      overflow: hidden; position: relative; display: flex; align-items: center; justify-content: center;
+    }
+    #video { width: 100%; height: 100%; object-fit: cover; display: none; }
+    #canvas { display: none; }
+    .placeholder { text-align: center; color: #94a3b8; font-size: 0.9rem; padding: 20px; }
+    .placeholder .icon { font-size: 3rem; display: block; margin-bottom: 10px; }
+
+    /* Scan line animation */
+    .scan-line {
+      position: absolute; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent, #2563eb, transparent);
+      animation: scan 2s linear infinite; display: none;
+    }
+    @keyframes scan { 0%{top:10%} 100%{top:90%} }
+
+    /* ===== Buttons ===== */
+    .btn { width: 100%; padding: 14px; border: none; border-radius: 12px; font-size: 1rem; font-weight: bold; cursor: pointer; margin-top: 12px; transition: all 0.2s; }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-primary.active { background: #ef4444; }
+    .btn-secondary { background: white; color: #475569; border: 1px solid #cbd5e1; }
+    .btn-secondary:hover { background: #f8fafc; }
+    .btn-reset { background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0; display: none; }
+    .btn-reset:hover { background: #e2e8f0; }
+
+    /* ===== Search ===== */
+    .search-label { font-size: 0.8rem; color: #64748b; margin-bottom: 8px; font-weight: bold; }
+    .search-row { display: flex; gap: 8px; margin-bottom: 12px; }
+    .search-row input { flex: 1; background: #eff6ff; border: 1px solid #bfdbfe; padding: 12px; border-radius: 8px; font-size: 1rem; outline: none; }
+    .search-row input:focus { border-color: var(--primary); }
+    .btn-search { background: #1e293b; color: white; border: none; padding: 0 18px; border-radius: 8px; font-weight: bold; cursor: pointer; white-space: nowrap; }
+    .results-list { max-height: 260px; overflow-y: auto; }
+    .result-item { border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; margin-bottom: 8px; cursor: pointer; position: relative; transition: background 0.15s; }
+    .result-item:hover { background: #f8fafc; }
+    .result-name { font-weight: bold; color: #1e40af; font-size: 0.95rem; }
+    .result-org  { font-size: 0.8rem; color: #64748b; margin-top: 3px; }
+    .result-id   { position: absolute; top: 10px; right: 10px; font-size: 0.7rem; background: #f1f5f9; padding: 2px 6px; border-radius: 4px; color: #94a3b8; }
+
+    /* ===== API Config ===== */
+    .config-box { background: #fef9c3; border: 1px solid #fde047; border-radius: 10px; padding: 12px; margin-bottom: 16px; font-size: 0.82rem; color: #854d0e; }
+    .config-box input { width: 100%; padding: 8px; border: 1px solid #fde047; border-radius: 6px; margin-top: 6px; font-size: 0.85rem; background: white; }
+
+    /* ===== Modal Overlay ===== */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(15,23,42,0.95);
+      display: none; flex-direction: column; align-items: center; justify-content: center;
+      z-index: 200; padding: 20px; overflow-y: auto;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-box { background: white; width: 100%; max-width: 420px; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.4); }
+
+    .modal-header { padding: 20px; text-align: center; color: white; }
+    .modal-header.success { background: #16a34a; }
+    .modal-header.already { background: #d97706; }
+    .modal-header.error   { background: #dc2626; }
+    .modal-header.info    { background: #2563eb; }
+    .modal-header h2 { font-size: 1.4rem; margin-bottom: 4px; }
+    .modal-header p  { font-size: 0.9rem; opacity: 0.9; }
+    .modal-body { padding: 20px; }
+
+    .welcome { text-align: center; padding-bottom: 14px; margin-bottom: 14px; border-bottom: 2px dashed #e2e8f0; }
+    .welcome h3 { color: #2563eb; font-size: 1rem; margin-bottom: 4px; }
+    .welcome h4 { color: #0f172a; font-size: 1rem; font-weight: 800; margin-bottom: 4px; }
+    .welcome p  { color: #64748b; font-size: 0.82rem; }
+
+    .data-row   { margin-bottom: 10px; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px; }
+    .data-label { font-size: 0.72rem; color: #94a3b8; text-transform: uppercase; font-weight: bold; margin-bottom: 3px; letter-spacing: 0.5px; }
+    .data-value { font-size: 1rem; color: #0f172a; font-weight: 500; }
+
+    .payment-alert { background: #fef08a; color: #854d0e; padding: 10px 14px; border-radius: 8px; font-weight: bold; border: 2px solid #fde047; margin-top: 12px; text-align: center; animation: blink 1s infinite; display: none; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+    .pdpa-pill { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 0.82rem; font-weight: bold; }
+    .pdpa-yes { background: #dcfce7; color: #16a34a; }
+    .pdpa-no  { background: #fee2e2; color: #dc2626; }
+
+    .modal-footer { display: flex; flex-direction: column; }
+    .btn-scan-next { background: var(--primary); color: white; padding: 16px; border: none; font-size: 1rem; font-weight: bold; cursor: pointer; transition: background 0.2s; }
+    .btn-scan-next:hover { background: #1d4ed8; }
+    .btn-back { background: #0f172a; color: white; padding: 14px; border: none; font-size: 0.9rem; font-weight: bold; cursor: pointer; border-top: 1px solid #1e293b; }
+    .btn-back:hover { background: #1e293b; }
+
+    /* ===== Info Form Modal ===== */
+    .form-section { margin-bottom: 20px; }
+    .form-title { font-weight: bold; font-size: 1rem; margin-bottom: 6px; color: #1e293b; }
+    .form-note  { font-size: 0.78rem; color: #64748b; margin-bottom: 10px; background: #f8fafc; padding: 8px; border-radius: 6px; border-left: 3px solid #cbd5e1; line-height: 1.4; }
+    .radio-opt  { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; cursor: pointer; font-size: 0.95rem; }
+    .radio-opt input { transform: scale(1.2); cursor: pointer; }
+    .self-input { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; margin-top: 6px; display: none; font-size: 0.95rem; }
+    .btn-submit-info { background: #16a34a; color: white; padding: 14px; border: none; border-radius: 10px; width: 100%; font-weight: bold; font-size: 1rem; cursor: pointer; margin-top: 8px; }
+    .btn-submit-info:disabled { background: #94a3b8; cursor: not-allowed; }
+    .btn-cancel-info { background: white; color: #64748b; border: 1px solid #e2e8f0; padding: 12px; border-radius: 10px; width: 100%; font-weight: bold; margin-top: 8px; cursor: pointer; }
+
+    /* ===== Spinner ===== */
+    .spinner { display: inline-block; width: 16px; height: 16px; border: 2.5px solid rgba(255,255,255,0.4); border-top-color: white; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 6px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ===== Status bar ===== */
+    .status-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #1e293b; color: white; text-align: center; padding: 8px; font-size: 0.8rem; display: none; z-index: 100; }
+    .status-bar.show { display: block; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>Event Scanner</h1>
+    <span class="badge-staff">STAFF ONLY</span>
+  </div>
+
+  <!-- Camera Card -->
+  <div class="card">
+    <!-- API URL config -->
+    <div class="config-box" id="configBox">
+      ⚙️ <b>ตั้งค่า API URL</b> — วางลิงก์ Apps Script ของคุณ แล้วกด Save
+      <input type="text" id="apiUrlInput" placeholder="https://script.google.com/macros/s/.../exec">
+      <button class="btn btn-primary" style="margin-top:8px;" onclick="saveApiUrl()">💾 Save URL</button>
+    </div>
+
+    <div id="video-container">
+      <div class="placeholder" id="placeholder">
+        <span class="icon">📸</span>
+        กดเปิดกล้องสแกน QR Code<br>
+        <small style="color:#cbd5e1;">(Press to open camera)</small>
+      </div>
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="canvas"></canvas>
+      <div class="scan-line" id="scanLine"></div>
+    </div>
+
+    <button class="btn btn-primary" id="cameraBtn" onclick="toggleCamera()">📷 เปิดกล้องสแกน (Open Camera)</button>
+    <button class="btn btn-secondary" onclick="document.getElementById('fileInput').click()">🖼️ สแกนจากรูปภาพ (Scan from Image)</button>
+    <input type="file" id="fileInput" accept="image/*" style="display:none" onchange="scanFromFile(this)">
+    <button class="btn btn-reset" id="resetBtn" onclick="resetHome()">↩ กลับหน้าหลัก</button>
+  </div>
+
+  <!-- Search Card -->
+  <div class="card">
+    <div class="search-label">🔍 ค้นหาชื่อ หรือ องค์กร</div>
+    <div class="search-row">
+      <input type="text" id="searchInput" placeholder="พิมพ์ชื่อ..." onkeyup="if(event.key==='Enter') doSearch()">
+      <button class="btn-search" onclick="doSearch()">ค้นหา</button>
+    </div>
+    <div class="results-list" id="resultsList"></div>
+  </div>
+
+  <!-- Modal: ขอข้อมูล Gender/PDPA -->
+  <div class="modal-overlay" id="infoModal">
+    <div class="modal-box">
+      <div class="modal-header info">
+        <h2>Required Info</h2>
+        <p id="infoName">กรุณากรอกข้อมูลก่อนเช็คอิน</p>
+      </div>
+      <div class="modal-body" style="max-height:65vh; overflow-y:auto;">
+        <div class="form-section">
+          <div class="form-title">Gender / เพศ</div>
+          <div class="form-note">We collect this to ensure an inclusive environment and for demographic analysis.<br>(เก็บเพื่อสร้างสภาพแวดล้อมที่ครอบคลุมและวิเคราะห์สถิติ)</div>
+          <label class="radio-opt"><input type="radio" name="ig" value="Male" onchange="toggleSelf(false)"> Male (ชาย)</label>
+          <label class="radio-opt"><input type="radio" name="ig" value="Female" onchange="toggleSelf(false)"> Female (หญิง)</label>
+          <label class="radio-opt"><input type="radio" name="ig" value="Prefer not to say" onchange="toggleSelf(false)"> Prefer not to say</label>
+          <label class="radio-opt"><input type="radio" name="ig" value="Self-Identify" onchange="toggleSelf(true)"> Self-Identify (ระบุเอง)</label>
+          <input type="text" id="selfText" class="self-input" placeholder="โปรดระบุ / Please specify...">
+        </div>
+        <div class="form-section" style="border-top:1px dashed #e2e8f0; padding-top:16px;">
+          <div class="form-title">Photo Consent (PDPA)</div>
+          <div class="form-note">Consent to photography/videography for promotional use.<br>(ยินยอมถ่ายภาพ/วิดีโอเพื่อการประชาสัมพันธ์)</div>
+          <label class="radio-opt"><input type="radio" name="ip" value="Consented"> ✅ ยินยอม (Consented)</label>
+          <label class="radio-opt"><input type="radio" name="ip" value="Not Consented"> ❌ ไม่ยินยอม (Not Consented)</label>
+        </div>
+        <button class="btn-submit-info" id="submitInfoBtn" onclick="submitInfo()">Save & Check-in</button>
+        <button class="btn-cancel-info" onclick="closeInfoModal()">Cancel / ยกเลิก</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: ผลลัพธ์ Check-in -->
+  <div class="modal-overlay" id="resultModal">
+    <div class="modal-box">
+      <div class="modal-header" id="resHeader">
+        <h2 id="resEn"></h2>
+        <p id="resTh"></p>
+      </div>
+      <div class="modal-body">
+        <div class="welcome">
+          <h3>ยินดีต้อนรับ สู่งาน</h3>
+          <h4>"พลังสตรีขับเคลื่อนอนาคตไทย"</h4>
+          <p>24 มีนาคม 2569 | Grand Mercure Bangkok Atrium</p>
+        </div>
+        <div class="data-row"><div class="data-label">Name</div><div class="data-value" id="rName" style="font-size:1.1rem;font-weight:800;color:#1e40af;">-</div></div>
+        <div class="data-row"><div class="data-label">Organization</div><div class="data-value" id="rOrg">-</div></div>
+        <div class="data-row"><div class="data-label">Role</div><div class="data-value" id="rRole">-</div></div>
+        <div class="data-row"><div class="data-label">Dietary Restriction</div><div class="data-value" id="rDiet">-</div></div>
+        <div class="data-row"><div class="data-label">Breakout Room</div><div class="data-value" id="rBreakout">-</div></div>
+        <div class="data-row"><div class="data-label">Badge</div><div class="data-value" id="rBadge">-</div></div>
+        <div class="data-row" style="border:none;"><div class="data-label">Photo Consent (PDPA)</div><div class="data-value" id="rPdpa">-</div></div>
+        <div class="payment-alert" id="rPayment"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-scan-next" onclick="scanNext()">📷 สแกนคนต่อไป</button>
+        <button class="btn-back" onclick="closeResult()">↩ กลับหน้าหลัก</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status bar for loading -->
+  <div class="status-bar" id="statusBar">กำลังตรวจสอบข้อมูล...</div>
+
+  <script>
+    // ===== CONFIG =====
+    var API_URL = localStorage.getItem('scanner_api_url') || '';
+    var pendingId = null;
+    var scanning  = false;
+    var stream    = null;
+
+    // Load saved URL
+    window.addEventListener('load', function() {
+      if (API_URL) {
+        document.getElementById('apiUrlInput').value = API_URL;
+        document.getElementById('configBox').style.background = '#f0fdf4';
+        document.getElementById('configBox').style.borderColor = '#86efac';
+      }
+    });
+
+    function saveApiUrl() {
+      var url = document.getElementById('apiUrlInput').value.trim();
+      if (!url) { alert('กรุณาใส่ URL'); return; }
+      localStorage.setItem('scanner_api_url', url);
+      API_URL = url;
+      var box = document.getElementById('configBox');
+      box.style.background = '#f0fdf4';
+      box.style.borderColor = '#86efac';
+      box.innerHTML = '✅ <b>API URL บันทึกแล้ว</b> — <span style="font-size:0.75rem;word-break:break-all;">' + url + '</span> <button onclick="editUrl()" style="margin-left:8px;font-size:0.75rem;cursor:pointer;">แก้ไข</button>';
+    }
+
+    function editUrl() {
+      var box = document.getElementById('configBox');
+      box.style.background = '#fef9c3';
+      box.style.borderColor = '#fde047';
+      box.innerHTML = '⚙️ <b>ตั้งค่า API URL</b><input type="text" id="apiUrlInput" value="' + API_URL + '" style="width:100%;padding:8px;border:1px solid #fde047;border-radius:6px;margin-top:6px;font-size:0.85rem;"><button class="btn btn-primary" style="margin-top:8px;" onclick="saveApiUrl()">💾 Save URL</button>';
+    }
+
+    // ===== CAMERA =====
+    var video    = document.getElementById('video');
+    var canvas   = document.getElementById('canvas');
+    var ctx      = canvas.getContext('2d');
+    var ph       = document.getElementById('placeholder');
+    var scanLine = document.getElementById('scanLine');
+    var camBtn   = document.getElementById('cameraBtn');
+    var resetBtn = document.getElementById('resetBtn');
+
+    async function toggleCamera() {
+      if (scanning) { stopCamera(); return; }
+
+      var tries = [
+        { video: { facingMode: { exact: 'environment' } } },
+        { video: { facingMode: 'environment' } },
+        { video: true }
+      ];
+
+      for (var i = 0; i < tries.length; i++) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(tries[i]);
+          startStream(stream);
+          return;
+        } catch(e) { console.warn(e.name); }
+      }
+      alert('ไม่สามารถเปิดกล้องได้\nกรุณาอนุญาต Camera ใน browser settings แล้ว refresh');
+    }
+
+    function startStream(s) {
+      video.srcObject = s;
+      video.style.display = 'block';
+      ph.style.display    = 'none';
+      scanLine.style.display = 'block';
+      scanning = true;
+      camBtn.textContent   = '⏹ ปิดกล้อง';
+      camBtn.classList.add('active');
+      resetBtn.style.display = 'none';
+      video.play();
+      requestAnimationFrame(tick);
+    }
+
+    function stopCamera() {
+      if (stream) { stream.getTracks().forEach(function(t){ t.stop(); }); stream = null; }
+      video.srcObject       = null;
+      video.style.display   = 'none';
+      ph.style.display      = 'flex';
+      scanLine.style.display = 'none';
+      scanning = false;
+      camBtn.textContent = '📷 เปิดกล้องสแกน (Open Camera)';
+      camBtn.classList.remove('active');
+      resetBtn.style.display = 'block';
+    }
+
+    function tick() {
+      if (!scanning) return;
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        canvas.width  = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0);
+        var code = jsQR(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height);
+        if (code) { stopCamera(); doCheckIn(code.data, null); return; }
+      }
+      requestAnimationFrame(tick);
+    }
+
+    function scanFromFile(input) {
+      if (!input.files || !input.files[0]) return;
+      resetBtn.style.display = 'block';
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        var img = new Image();
+        img.onload = function() {
+          canvas.width  = img.width;
+          canvas.height = img.height;
+          ctx.drawImage(img, 0, 0);
+          var code = jsQR(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height);
+          if (code) { doCheckIn(code.data, null); }
+          else { alert('ไม่พบ QR Code ในภาพนี้'); }
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(input.files[0]);
+      input.value = '';
+    }
+
+    function resetHome() {
+      stopCamera();
+      resetBtn.style.display = 'none';
+      document.getElementById('searchInput').value = '';
+      document.getElementById('resultsList').innerHTML = '';
+    }
+
+    // ===== API CALL =====
+    function callApi(body, onSuccess) {
+      if (!API_URL) {
+        alert('กรุณาใส่ Apps Script URL ก่อน');
+        return;
+      }
+      showStatus('กำลังตรวจสอบข้อมูล...');
+      // ใช้ GET เพราะ Apps Script บาง deploy ไม่รองรับ POST โดยตรง
+      var params = new URLSearchParams();
+      for (var k in body) { params.append(k, typeof body[k] === 'object' ? JSON.stringify(body[k]) : body[k]); }
+      var url = API_URL + '?' + params.toString();
+
+      fetch(url, { redirect: 'follow' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) { hideStatus(); onSuccess(data); })
+        .catch(function(err) {
+          hideStatus();
+          console.error(err);
+          alert('เกิดข้อผิดพลาด: ' + err.message);
+        });
+    }
+
+    // ===== CHECK-IN =====
+    function doCheckIn(regId, additionalInfo) {
+      var body = { action: 'checkin', regId: regId };
+      if (additionalInfo) {
+        body.gender = additionalInfo.gender;
+        body.pdpa   = additionalInfo.pdpa;
+      }
+      callApi(body, function(res) {
+        if (res.status === 'require_info') {
+          pendingId = res.id;
+          document.getElementById('infoName').textContent = res.name;
+          document.querySelectorAll('input[name="ig"]').forEach(function(r){ r.checked=false; });
+          document.querySelectorAll('input[name="ip"]').forEach(function(r){ r.checked=false; });
+          document.getElementById('selfText').value = '';
+          document.getElementById('selfText').style.display = 'none';
+          var btn = document.getElementById('submitInfoBtn');
+          btn.textContent = 'Save & Check-in';
+          btn.disabled = false;
+          document.getElementById('infoModal').classList.add('open');
+        } else {
+          showResult(res);
+        }
+      });
+    }
+
+    // ===== SEARCH =====
+    function doSearch() {
+      var q = document.getElementById('searchInput').value.trim();
+      if (!q) return;
+      var list = document.getElementById('resultsList');
+      list.innerHTML = '<p style="text-align:center;color:#64748b;padding:10px;">กำลังค้นหา...</p>';
+      callApi({ action: 'search', q: q }, function(users) {
+        list.innerHTML = '';
+        if (!users || users.length === 0) {
+          list.innerHTML = '<p style="text-align:center;color:#94a3b8;padding:10px;">ไม่พบข้อมูล</p>';
+          return;
+        }
+        users.forEach(function(u) {
+          var d = document.createElement('div');
+          d.className = 'result-item';
+          d.onclick   = function(){ doCheckIn(u.id, null); };
+          d.innerHTML =
+            '<div class="result-id">' + u.id + '</div>' +
+            '<div class="result-name">' + u.firstName + ' ' + u.surName + '</div>' +
+            '<div class="result-org">' + u.org + '</div>' +
+            '<span style="display:inline-block;font-size:0.7rem;background:#e2e8f0;padding:2px 8px;border-radius:4px;margin-top:5px;">' + (u.role||'-') + '</span>';
+          list.appendChild(d);
+        });
+      });
+    }
+
+    // ===== INFO MODAL =====
+    function toggleSelf(show) {
+      var inp = document.getElementById('selfText');
+      inp.style.display = show ? 'block' : 'none';
+      if (!show) inp.value = '';
+      if (show) inp.focus();
+    }
+
+    function closeInfoModal() {
+      document.getElementById('infoModal').classList.remove('open');
+      pendingId = null;
+      resetBtn.style.display = 'block';
+    }
+
+    function submitInfo() {
+      var gr = document.querySelector('input[name="ig"]:checked');
+      var pr = document.querySelector('input[name="ip"]:checked');
+      if (!gr) { alert('กรุณาเลือกเพศ'); return; }
+      if (!pr) { alert('กรุณาเลือก PDPA'); return; }
+      var gv = gr.value;
+      if (gv === 'Self-Identify') {
+        gv = document.getElementById('selfText').value.trim();
+        if (!gv) { alert('กรุณาระบุเพศ'); return; }
+      }
+      var btn = document.getElementById('submitInfoBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>Processing...';
+      document.getElementById('infoModal').classList.remove('open');
+      doCheckIn(pendingId, { gender: gv, pdpa: pr.value });
+    }
+
+    // ===== RESULT MODAL =====
+    function showResult(res) {
+      var header = document.getElementById('resHeader');
+      document.getElementById('resEn').textContent = res.msgEn || '';
+      document.getElementById('resTh').textContent = res.msgTh || '';
+      header.className = 'modal-header ' + (res.status || 'error');
+
+      document.getElementById('rName').textContent = res.name    || '-';
+      document.getElementById('rOrg').textContent  = res.org     || '-';
+      document.getElementById('rRole').textContent = res.role    || '-';
+      document.getElementById('rDiet').textContent = res.dietary || 'None';
+      document.getElementById('rBreakout').innerHTML = breakoutHtml(res.breakout);
+      document.getElementById('rBadge').innerHTML    = badgeHtml(res.badge);
+
+      var pd = document.getElementById('rPdpa');
+      if (res.pdpa === 'Consented')
+        pd.innerHTML = '<span class="pdpa-pill pdpa-yes">✅ ยินยอม</span>';
+      else if (res.pdpa === 'Not Consented')
+        pd.innerHTML = '<span class="pdpa-pill pdpa-no">❌ ไม่ยินยอม</span>';
+      else
+        pd.textContent = res.pdpa || '-';
+
+      var pay = document.getElementById('rPayment');
+      if (res.payment) { pay.textContent = '⚠️ Payment Alert: ' + res.payment; pay.style.display = 'block'; }
+      else pay.style.display = 'none';
+
+      document.getElementById('resultModal').classList.add('open');
+    }
+
+    function scanNext() {
+      document.getElementById('resultModal').classList.remove('open');
+      resetFields();
+      toggleCamera();
+    }
+
+    function closeResult() {
+      document.getElementById('resultModal').classList.remove('open');
+      resetFields();
+      resetBtn.style.display = 'block';
+    }
+
+    function resetFields() {
+      document.getElementById('searchInput').value = '';
+      document.getElementById('resultsList').innerHTML = '';
+      ['rName','rOrg','rRole','rDiet','rBreakout','rBadge','rPdpa'].forEach(function(id){
+        document.getElementById(id).innerHTML = '-';
+      });
+      document.getElementById('rPayment').style.display = 'none';
+      pendingId = null;
+    }
+
+    // ===== BADGE / BREAKOUT COLOR =====
+    function badgeHtml(b) {
+      if (!b || b==='-' || b==='') return '-';
+      var lo = b.toLowerCase(), bg='#f8fafc', c='#334155', br='#94a3b8';
+      if (lo.includes('participant'))  { bg='#fff'; c='#0f172a'; br='#94a3b8'; }
+      else if (lo.includes('roundtable')) { bg='#22c55e'; c='#fff'; br='#16a34a'; }
+      else if (lo.includes('speaker'))    { bg='#f97316'; c='#fff'; br='#ea580c'; }
+      return '<span style="background:'+bg+';color:'+c+';border:1px solid '+br+';padding:3px 10px;border-radius:6px;font-weight:bold;display:inline-block;">'+b+'</span>';
+    }
+
+    function breakoutHtml(r) {
+      if (!r || r==='-' || r==='') return '-';
+      var bg='#f8fafc', c='#334155', br='#cbd5e1';
+      if      (r.includes('\u0E01\u0E25\u0E38\u0E48\u0E21 1')) { bg='#fee2e2'; c='#dc2626'; br='#fca5a5'; }
+      else if (r.includes('\u0E01\u0E25\u0E38\u0E48\u0E21 2')) { bg='#dcfce7'; c='#16a34a'; br='#86efac'; }
+      else if (r.includes('\u0E01\u0E25\u0E38\u0E48\u0E21 3')) { bg='#fef9c3'; c='#ca8a04'; br='#fde047'; }
+      else return r;
+      return '<div style="background:'+bg+';color:'+c+';border:1px solid '+br+';padding:6px 12px;border-radius:8px;font-weight:bold;font-size:0.9rem;">'+r+'</div>';
+    }
+
+    // ===== STATUS BAR =====
+    function showStatus(msg) {
+      var sb = document.getElementById('statusBar');
+      sb.textContent = msg;
+      sb.classList.add('show');
+    }
+    function hideStatus() {
+      document.getElementById('statusBar').classList.remove('show');
+    }
+  </script>
+</body>
+</html>
