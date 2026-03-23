@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <script>
+    // ดึง id จาก URL
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("id");
+
+    if (id) {
+      const target = "https://script.google.com/macros/s/AKfycbxdpVWI_UBafeEpk9RrXALEwYzQ21sgFClzUg3akKZq6_mrOHGEXdyldIe5rWOiBKgQAQ/exec?page=confirm&id=" + id;
+      window.location.replace(target);
+    } else {
+      document.body.innerHTML = "Invalid link";
+    }
+  </script>
+</head>
+<body>
+Redirecting...
+</body>
+</html>
