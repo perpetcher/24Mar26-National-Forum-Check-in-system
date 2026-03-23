@@ -70,11 +70,17 @@
     /* ===== Modal Overlay ===== */
     .modal-overlay {
       position: fixed; inset: 0; background: rgba(15,23,42,0.95);
-      display: none; flex-direction: column; align-items: center; justify-content: center;
-      z-index: 200; padding: 20px; overflow-y: auto;
+      display: none; flex-direction: column; align-items: center;
+      justify-content: flex-start; /* FIX: ไม่ center ตั้ง ให้เลื่อนได้ */
+      z-index: 200; padding: 16px;
+      overflow-y: auto; /* FIX: scroll ได้ */
     }
     .modal-overlay.open { display: flex; }
-    .modal-box { background: white; width: 100%; max-width: 420px; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.4); }
+    .modal-box {
+      background: white; width: 100%; max-width: 420px; border-radius: 20px;
+      overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+      margin: auto; /* FIX: จัดกลางแนวตั้ง แต่ยังเลื่อนได้ */
+    }
 
     .modal-header { padding: 20px; text-align: center; color: white; }
     .modal-header.success { background: #16a34a; }
@@ -137,7 +143,7 @@
   <!-- Camera Card -->
   <div class="card">
     <!-- API URL config -->
-    <div class="config-box" id="configBox">
+    <div class="config-box" id="configBox" style="display:none;">
       ⚙️ <b>ตั้งค่า API URL</b> — วางลิงก์ Apps Script ของคุณ แล้วกด Save
       <input type="text" id="apiUrlInput" placeholder="https://script.google.com/macros/s/.../exec">
       <button class="btn btn-primary" style="margin-top:8px;" onclick="saveApiUrl()">💾 Save URL</button>
@@ -217,7 +223,13 @@
         <div class="data-row"><div class="data-label">Role</div><div class="data-value" id="rRole">-</div></div>
         <div class="data-row"><div class="data-label">Dietary Restriction</div><div class="data-value" id="rDiet">-</div></div>
         <div class="data-row"><div class="data-label">Breakout Room</div><div class="data-value" id="rBreakout">-</div></div>
-        <div class="data-row"><div class="data-label">Badge</div><div class="data-value" id="rBadge">-</div></div>
+        <div class="data-row">
+          <div class="data-label">Badge</div>
+          <div class="data-value" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <span id="rBadge">-</span>
+            <span id="rRegId" style="background:#1e40af;color:#fff;font-size:0.85rem;font-weight:800;padding:3px 12px;border-radius:6px;letter-spacing:0.5px;"></span>
+          </div>
+        </div>
         <div class="data-row" style="border:none;"><div class="data-label">Photo Consent (PDPA)</div><div class="data-value" id="rPdpa">-</div></div>
         <div class="payment-alert" id="rPayment"></div>
       </div>
@@ -233,37 +245,12 @@
 
   <script>
     // ===== CONFIG =====
-    var API_URL = localStorage.getItem('scanner_api_url') || '';
+    var API_URL = 'https://script.google.com/macros/s/AKfycbxdpVWI_UBafeEpk9RrXALEwYzQ21sgFClzUg3akKZq6_mrOHGEXdyldIe5rWOiBKgQAQ/exec';
     var pendingId = null;
     var scanning  = false;
     var stream    = null;
 
-    // Load saved URL
-    window.addEventListener('load', function() {
-      if (API_URL) {
-        document.getElementById('apiUrlInput').value = API_URL;
-        document.getElementById('configBox').style.background = '#f0fdf4';
-        document.getElementById('configBox').style.borderColor = '#86efac';
-      }
-    });
-
-    function saveApiUrl() {
-      var url = document.getElementById('apiUrlInput').value.trim();
-      if (!url) { alert('กรุณาใส่ URL'); return; }
-      localStorage.setItem('scanner_api_url', url);
-      API_URL = url;
-      var box = document.getElementById('configBox');
-      box.style.background = '#f0fdf4';
-      box.style.borderColor = '#86efac';
-      box.innerHTML = '✅ <b>API URL บันทึกแล้ว</b> — <span style="font-size:0.75rem;word-break:break-all;">' + url + '</span> <button onclick="editUrl()" style="margin-left:8px;font-size:0.75rem;cursor:pointer;">แก้ไข</button>';
-    }
-
-    function editUrl() {
-      var box = document.getElementById('configBox');
-      box.style.background = '#fef9c3';
-      box.style.borderColor = '#fde047';
-      box.innerHTML = '⚙️ <b>ตั้งค่า API URL</b><input type="text" id="apiUrlInput" value="' + API_URL + '" style="width:100%;padding:8px;border:1px solid #fde047;border-radius:6px;margin-top:6px;font-size:0.85rem;"><button class="btn btn-primary" style="margin-top:8px;" onclick="saveApiUrl()">💾 Save URL</button>';
-    }
+    // API URL hardcoded — ไม่ต้องตั้งค่า
 
     // ===== CAMERA =====
     var video    = document.getElementById('video');
@@ -399,7 +386,7 @@
           btn.disabled = false;
           document.getElementById('infoModal').classList.add('open');
         } else {
-          showResult(res);
+          showResult(res, regId); // FIX: ส่ง regId ไปด้วย
         }
       });
     }
@@ -462,7 +449,7 @@
     }
 
     // ===== RESULT MODAL =====
-    function showResult(res) {
+    function showResult(res, regId) {
       var header = document.getElementById('resHeader');
       document.getElementById('resEn').textContent = res.msgEn || '';
       document.getElementById('resTh').textContent = res.msgTh || '';
@@ -475,16 +462,20 @@
       document.getElementById('rBreakout').innerHTML = breakoutHtml(res.breakout);
       document.getElementById('rBadge').innerHTML    = badgeHtml(res.badge);
 
+      // FIX: แสดง Registration ID ข้าง Badge
+      var regIdEl = document.getElementById('rRegId');
+      if (regIdEl) regIdEl.textContent = regId || res.id || '';
+
       var pd = document.getElementById('rPdpa');
       if (res.pdpa === 'Consented')
-        pd.innerHTML = '<span class="pdpa-pill pdpa-yes">✅ ยินยอม</span>';
+        pd.innerHTML = '<span class="pdpa-pill pdpa-yes">&#9989; ยินยอม</span>';
       else if (res.pdpa === 'Not Consented')
-        pd.innerHTML = '<span class="pdpa-pill pdpa-no">❌ ไม่ยินยอม</span>';
+        pd.innerHTML = '<span class="pdpa-pill pdpa-no">&#10060; ไม่ยินยอม</span>';
       else
         pd.textContent = res.pdpa || '-';
 
       var pay = document.getElementById('rPayment');
-      if (res.payment) { pay.textContent = '⚠️ Payment Alert: ' + res.payment; pay.style.display = 'block'; }
+      if (res.payment) { pay.textContent = '&#9888; Payment Alert: ' + res.payment; pay.style.display = 'block'; }
       else pay.style.display = 'none';
 
       document.getElementById('resultModal').classList.add('open');
@@ -508,6 +499,8 @@
       ['rName','rOrg','rRole','rDiet','rBreakout','rBadge','rPdpa'].forEach(function(id){
         document.getElementById(id).innerHTML = '-';
       });
+      var regIdEl = document.getElementById('rRegId');
+      if (regIdEl) regIdEl.textContent = '';
       document.getElementById('rPayment').style.display = 'none';
       pendingId = null;
     }
